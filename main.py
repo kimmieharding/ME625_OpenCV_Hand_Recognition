@@ -1,37 +1,38 @@
 import cv2 as cv
+import mediapipe as mp
 import numpy as np
 import glob
 import os
+from ultralytics import YOLO
 
-#pre-trained classification algorithm used for detecting objects in an image
-face_cascade = cv.CascadeClassifier("C:\\Users\\Aquella\\Desktop\\NJIT\\NJIT Courses\\Semester 1\\Introduction to Robotics\\Assignments\\project\\haarcascade_frontalface_default.xml")
+
+face_model = YOLO("C:\\Users\\Aquella\\Documents\\github\\ME625_OpenCV_Hand_Recognition\\yolov8n-face-lindevs.pt")
+
 
 def readImg():
     folder = "C:\\Users\\Aquella\\Documents\\github\\ME625_OpenCV_Hand_Recognition\\Traffic Signal Poses"
-
     #gets all the images from the path(folder) above, then combines the folder path
     # and the image name to get a full path for the image. 
     img_paths = glob.glob(os.path.join(folder,"*.*"))
     return img_paths
 
-
-
 def faceDetection(img):
-    img_copy = img
-    #Converting to grayscale 
-    gray = cv.cvtColor(img_copy, cv.COLOR_BGR2GRAY)
-    #detectmultiscale() detects objects of different sizes (we are focused on faces here)
-    face_rec = face_cascade.detectMultiScale(gray, scaleFactor=1.15, minNeighbors=6, minSize=(40,40))
+    results = face_model(img)[0]
 
-    #Draws the rectangle when faces are detected
-    for (x, y, w, h) in face_rec:
-        #(x,y) represents the coordinates for the top-left corner of the rect
-        #(x+w,y+h) represents the bottom-right corner of the rect
-        cv.rectangle(gray, (x, y), (x + w, y + h), (255, 255, 255), 5)
-            
-    cv.imshow('gray',gray)
-    cv.waitKey(0)  
-    cv.destroyAllWindows()    
+    # Draw each detected face
+    for box in results.boxes:
+        #Confidence score
+        conf = float(box.conf[0])
+        #If the confidence score for face detection is 80 & above, draw a bounding box.
+        if conf >= .80:
+            x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
+            # Draw bounding box
+            cv.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+   
+    #Display processed image
+    cv.imshow('Front Facing Image',img)
+    cv.waitKey(0)     
+   
 
 if __name__ == '__main__':
     paths = readImg()
