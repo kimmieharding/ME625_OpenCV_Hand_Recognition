@@ -11,6 +11,14 @@ import modern_robotics as mr
 face_model = YOLO("C:\\Users\\kimmi\\Documents\\ME625\\OpenCV\\ME625_OpenCV_Hand_Recognition\\yolov8n-face-lindevs.pt")
 skeleton_model = "C:\\Users\\kimmi\\Documents\\ME625\\OpenCV\\ME625_OpenCV_Hand_Recognition\\pose_landmarker_lite.task"
 
+##DEFINE IDEAL THETALIST FOR TRAFFIC SIGNALS
+STOP_RIGHT_HAND = [-np.pi/2, 0, 0, 0] #Theta 1-4
+STOP_LEFT_HAND = [0, 0, 0, np.pi/2] #Theta 5-8
+GO_RIGHT_HAND = [-np.pi/2, -np.pi/4, np.pi/2, 0] #Theta 1-4
+GO_LEFT_HAND = [np.pi/2, -np.pi/4, np.pi/2, 0] #Theta 5-8
+TURN_LEFT = [0, 0, 0, 0] #Theta 1-4
+TURN_RIGHT = [0, 0, 0, 0] #Theta 5-8
+
 def readImg():
     folder = "C:\\Users\\kimmi\\Documents\\ME625\\OpenCV\\ME625_OpenCV_Hand_Recognition\\Traffic Signal Poses"
     #gets all the images from the path(folder) above, then combines the folder path
@@ -154,7 +162,7 @@ def define_home_configurations(joint_lengths):
     home_configurations = [M0EL, M0ER]
 
     return home_configurations
-    
+
 if __name__ == '__main__':
     paths = readImg()
     for img in paths:
