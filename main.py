@@ -134,15 +134,18 @@ def define_body_frame_screws(joint_lengths):
     L4 = joint_lengths[3]
 
     B1 = np.array([0, 0, 1, 0, (L1+L2), 0])
-    B2 = np.array([0, 1, 0, 0, -(L1+L2)])
-    B3 = np.array([0, 1, 0, 0, 0, 0, -L2])
-    B4 = np.array([1, 0, 0, 0, 0, 0, 0])
+    B2 = np.array([0, 1, 0, 0, 0, -(L1+L2)])
+    B3 = np.array([0, 1, 0, 0, 0, -L2])
+    B4 = np.array([1, 0, 0, 0, 0, 0])
     B5 = np.array([0, 0, 1, 0, (L3+L4), 0])
-    B6 = np.array([0, 1, 0, 0, -(L3+L4)])
-    B7 = np.array([0, 1, 0, 0, 0, 0, -L4])
-    B8 = np.array([1, 0, 0, 0, 0, 0, 0])
+    B6 = np.array([0, 1, 0, 0, 0, -(L3+L4)])
+    B7 = np.array([0, 1, 0, 0, 0, -L4])
+    B8 = np.array([1, 0, 0, 0, 0, 0])
 
-    B_list = [B1, B2, B3, B4, B5, B6]
+    B_list_left = np.column_stack([B1, B2, B3, B4])
+    B_list_right = np.column_stack([B5, B6, B7, B8])
+
+    B_list = [B_list_left, B_list_right]
 
     return B_list
 
@@ -163,6 +166,25 @@ def define_home_configurations(joint_lengths):
 
     return home_configurations
 
+def calculate_T_desired(vertices):
+    """
+    Define the T_desired transform for the inverseKinematics
+    Compute hand position relative to shoulder
+    
+    T_desire_left: Transformation matrix of left and in relation to left shoulder
+    T_desire_right: Transformation matrix of right and in relation to right shoulder
+    """
+
+    R = np.eye(3)
+
+    p_hand_shoulder_left = vertices[16] - vertices[12]
+    p_hand_shoulder_right = vertices[15] - vertices[11]
+
+    T_desire_left = mr.RpToTrans(R, p_hand_shoulder_left)
+    T_desire_right = mr.RpToTrans(R, p_hand_shoulder_right)
+
+    return [T_desire_left, T_desire_right]
+
 if __name__ == '__main__':
     paths = readImg()
     for img in paths:
@@ -176,3 +198,6 @@ if __name__ == '__main__':
             joint_lengths = jointLengths(world_landmarks_dict)
             B_list = define_body_frame_screws(joint_lengths)
             home_configurations = define_home_configurations(joint_lengths)
+            T_desired = calculate_T_desired(world_landmarks_dict)
+            [theta_solution_left, success_left] = mr.IKinBody(B_list[0], home_configurations[0], T_desired[0], [0,0,0,0], 0.1, 0.1)
+            [theta_solution_right, success_right] = mr.IKinBody(B_list[1], home_configurations[1], T_desired[1], [0,0,0,0], 0.1, 0.1)
