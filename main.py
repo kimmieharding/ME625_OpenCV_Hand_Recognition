@@ -74,6 +74,50 @@ def skeletonDetection(img):
 
     return pose_landmarker_result
 
+def create_world_landmarks_dict(pose_world_landmarks):
+    """
+    Extract World Landmarks of vertex 11-21 into a Dictonary
+    Right arm = 11 13 15 & Right hand = 15 17 19 21
+    Left arm = 12 14 16 & Left hand = 16 18 20 22
+    """
+
+    desired_indices = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
+    world_landmarks = pose_world_landmarks[0]  # first detected person
+
+    world_landmarks_dict = {
+        idx: np.array([world_landmarks[idx].x,
+                    world_landmarks[idx].y,
+                    world_landmarks[idx].z])
+        for idx in desired_indices
+    }
+
+    return world_landmarks_dict
+
+def jointLengths(vertices):
+    """
+    Calculate L1, L2, L3, and L4 from the differences 
+    between the vertex from pandas dataframe [index, x, y, z]
+    
+    pose_world_landmarks: x,y, & z coordinates realtive to coordinate system 
+    at the midpoint of the hips
+
+    Right arm = 11 13 15 & Right hand = 15 17 19 21
+    Left arm = 12 14 16 & Left hand = 16 18 20 22
+
+    joint_lengths: [L1, L2, L3, L4] from pandas dataframe
+        L1 = 11 to 13
+        L2 = 13 to 15
+        L3 = 12 to 14
+        L4 = 14 to 16
+    """
+    L1 = np.linalg.norm(vertices[13] - vertices[11])
+    L2 = np.linalg.norm(vertices[15] - vertices[13])
+    L3 = np.linalg.norm(vertices[14] - vertices[12])
+    L4 = np.linalg.norm(vertices[16] - vertices[14])
+    joint_lengths = np.array([L1, L2, L3, L4])
+
+    return joint_lengths
+    
 if __name__ == '__main__':
     paths = readImg()
     for img in paths:
@@ -83,3 +127,5 @@ if __name__ == '__main__':
 
         if detected:
             pose_landmarker_result = skeletonDetection(img)
+            world_landmarks_dict = create_world_landmarks_dict(pose_landmarker_result.pose_world_landmarks)
+            joint_lengths = jointLengths(world_landmarks_dict)
