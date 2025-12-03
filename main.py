@@ -105,7 +105,7 @@ def jointLengths(vertices):
     Right arm = 11 13 15 & Right hand = 15 17 19 21
     Left arm = 12 14 16 & Left hand = 16 18 20 22
 
-    joint_lengths: [L1, L2, L3, L4] from pandas dataframe
+    joint_lengths: [L1, L2, L3, L4]
         L1 = 11 to 13
         L2 = 13 to 15
         L3 = 12 to 14
@@ -137,6 +137,23 @@ def define_body_frame_screws(joint_lengths):
     B_list = [B1, B2, B3, B4, B5, B6]
 
     return B_list
+
+def define_home_configurations(joint_lengths):
+    """
+    Define the home configuration of the end-effector for the left and right arm
+    
+    home_configurations = [M0EL, M0ER]
+    """
+    R = np.eye(3)
+    pEL = np.array([(joint_lengths[2]+joint_lengths[3]), 0, 0])
+    pER = np.array([(joint_lengths[0]+joint_lengths[1]), 0, 0])
+
+    M0EL = mr.RpToTrans(R, pEL)
+    M0ER = mr.RpToTrans(R, pER)
+
+    home_configurations = [M0EL, M0ER]
+
+    return home_configurations
     
 if __name__ == '__main__':
     paths = readImg()
@@ -150,3 +167,4 @@ if __name__ == '__main__':
             world_landmarks_dict = create_world_landmarks_dict(pose_landmarker_result.pose_world_landmarks)
             joint_lengths = jointLengths(world_landmarks_dict)
             B_list = define_body_frame_screws(joint_lengths)
+            home_configurations = define_home_configurations(joint_lengths)
