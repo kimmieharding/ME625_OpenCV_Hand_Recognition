@@ -6,6 +6,7 @@ from mediapipe import solutions
 from mediapipe.framework.formats import landmark_pb2
 import numpy as np
 from ultralytics import YOLO
+import modern_robotics as mr 
 
 face_model = YOLO("C:\\Users\\kimmi\\Documents\\ME625\\OpenCV\\ME625_OpenCV_Hand_Recognition\\yolov8n-face-lindevs.pt")
 skeleton_model = "C:\\Users\\kimmi\\Documents\\ME625\\OpenCV\\ME625_OpenCV_Hand_Recognition\\pose_landmarker_lite.task"
@@ -117,6 +118,25 @@ def jointLengths(vertices):
     joint_lengths = np.array([L1, L2, L3, L4])
 
     return joint_lengths
+
+def define_body_frame_screws(joint_lengths):
+    L1 = joint_lengths[0]
+    L2 = joint_lengths[1]
+    L3 = joint_lengths[2]
+    L4 = joint_lengths[3]
+
+    B1 = np.array([0, 0, 1, 0, (L1+L2), 0])
+    B2 = np.array([0, 1, 0, 0, -(L1+L2)])
+    B3 = np.array([0, 1, 0, 0, 0, 0, -L2])
+    B4 = np.array([1, 0, 0, 0, 0, 0, 0])
+    B5 = np.array([0, 0, 1, 0, (L3+L4), 0])
+    B6 = np.array([0, 1, 0, 0, -(L3+L4)])
+    B7 = np.array([0, 1, 0, 0, 0, 0, -L4])
+    B8 = np.array([1, 0, 0, 0, 0, 0, 0])
+
+    B_list = [B1, B2, B3, B4, B5, B6]
+
+    return B_list
     
 if __name__ == '__main__':
     paths = readImg()
@@ -129,3 +149,4 @@ if __name__ == '__main__':
             pose_landmarker_result = skeletonDetection(img)
             world_landmarks_dict = create_world_landmarks_dict(pose_landmarker_result.pose_world_landmarks)
             joint_lengths = jointLengths(world_landmarks_dict)
+            B_list = define_body_frame_screws(joint_lengths)
