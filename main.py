@@ -11,19 +11,6 @@ import modern_robotics as mr
 face_model = YOLO("C:\\Users\\kimmi\\Documents\\ME625\\OpenCV\\ME625_OpenCV_Hand_Recognition\\yolov8n-face-lindevs.pt")
 skeleton_model = "C:\\Users\\kimmi\\Documents\\ME625\\OpenCV\\ME625_OpenCV_Hand_Recognition\\pose_landmarker_lite.task"
 
-IDEAL_POSES = {
-    "STOP_RIGHT_HAND": np.array([np.pi/2, 0, 0, 0]),
-    "STOP_LEFT_HAND":  np.array([-np.pi/2, 0, 0, 0]),
-
-    "GO_RIGHT_HAND": np.array([np.pi/2, np.pi/4, -np.pi/2, np.pi/2]),
-    "GO_LEFT_HAND":  np.array([-np.pi/2, np.pi/4, -np.pi/2, np.pi/2]),
-
-    "TURN_LEFT":  np.array([0, 0, 0, 0]),
-    "TURN_RIGHT": np.array([0, 0, 0, 0])
-}
-
-ANGLE_THRESHOLD = np.deg2rad(30)   # 30 degrees
-
 def readImg():
     folder = "C:\\Users\\kimmi\\Documents\\ME625\\OpenCV\\ME625_OpenCV_Hand_Recognition\\Traffic Signal Poses"
     #gets all the images from the path(folder) above, then combines the folder path
@@ -90,12 +77,13 @@ def skeletonDetection(img):
 
 def create_world_landmarks_dict(pose_world_landmarks):
     """
-    Extract World Landmarks of vertex 11-21 into a Dictonary
-    Right arm = 11 13 15 & Right hand = 15 17 19 21
-    Left arm = 12 14 16 & Left hand = 16 18 20 22
+    Extract World Landmarks of vertex 11-24 into a Dictonary
+    Left arm = 11 13 15 & Left hand = 15 17 19 21
+    Right arm = 12 14 16 & Right hand = 16 18 20 22
+    Hips = 24 23
     """
 
-    desired_indices = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
+    desired_indices = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 24, 23]
     world_landmarks = pose_world_landmarks[0]  # first detected person
 
     world_landmarks_dict = {
@@ -128,16 +116,20 @@ def jointLengths(vertices):
     L2 = np.linalg.norm(vertices[16] - vertices[14])
     L3 = np.linalg.norm(vertices[13] - vertices[11])
     L4 = np.linalg.norm(vertices[15] - vertices[13])
+    
     joint_lengths = np.array([L1, L2, L3, L4])
 
+    #Possible Method to account for variability: Enforce Bilateral Symmetry
     return joint_lengths
 
 def define_body_frame_screws(joint_lengths):
+    #Variables for all the joint lengths
     L1 = joint_lengths[0]
     L2 = joint_lengths[1]
     L3 = joint_lengths[2]
     L4 = joint_lengths[3]
 
+    #Define all the body axis screws
     B1 = np.array([0, 0, 1, 0, (L1+L2), 0])
     B2 = np.array([0, 1, 0, 0, 0, -(L1+L2)])
     B3 = np.array([0, 1, 0, 0, 0, -L2])
@@ -160,7 +152,8 @@ def define_home_configurations(joint_lengths):
     
     home_configurations = [M0EL, M0ER]
     """
-    R = np.eye(3)
+    R = np.eye(3) #End-effector is in the same orientation as teh rotation matrices
+    
     pEL = np.array([(joint_lengths[2]+joint_lengths[3]), 0, 0])
     pER = np.array([(joint_lengths[0]+joint_lengths[1]), 0, 0])
 
@@ -179,43 +172,125 @@ def calculate_T_desired(vertices):
     T_desire_left: Transformation matrix of left and in relation to left shoulder
     T_desire_right: Transformation matrix of right and in relation to right shoulder
     """
+    # R_shoulder_right = np.array([
+    #     [-1, 0,  0],
+    #     [ 0, 0,  1],
+    #     [ 0, 1,  0]
+    # ])
 
-    R_shoulder_right = np.array([
-        [-1, 0,  0],
-        [ 0, 0,  1],
-        [ 0, 1,  0]
-    ])
+    # R_shoulder_left = np.array([
+    #     [ 1, 0,  0],
+    #     [ 0, 0, -1],
+    #     [ 0, -1, 0]
+    # ])
 
-    R_shoulder_left = np.array([
-        [ 1, 0,  0],
-        [ 0, 0, -1],
-        [ 0, -1, 0]
-    ])
+    # v_left_world = vertices[15] - vertices[11]
+    # v_right_world = vertices[16] - vertices[12]
 
-    v_left_world = vertices[15] - vertices[11]
-    v_right_world = vertices[16] - vertices[12]
+    # p_hand_shoulder_left = R_shoulder_left @ v_left_world
+    # p_hand_shoulder_right = R_shoulder_right @ v_right_world
 
-    p_hand_shoulder_left = R_shoulder_left @ v_left_world
-    p_hand_shoulder_right = R_shoulder_right @ v_right_world
+    # T_desire_left = mr.RpToTrans(np.eye(3), p_hand_shoulder_left)
+    # T_desire_right = mr.RpToTrans(np.eye(3), p_hand_shoulder_right)
+    
+    # --- Step 1: Define body z-axis (torso up) ---
+    hip_left  = vertices[23]
+    hip_right = vertices[24]
+    shoulder_left  = vertices[11]
+    shoulder_right = vertices[12]
+    
+    hips_mid      = 0.5 * (hip_left + hip_right)
+    shoulders_mid = 0.5 * (shoulder_left + shoulder_right)
+    
+    z_body = shoulders_mid - hips_mid
+    z_body /= np.linalg.norm(z_body)
+    
+    # --- Helper function to build shoulder frame ---
+    def shoulder_frame(shoulder, wrist):
+        # x along arm
+        x = wrist - shoulder
+        x /= np.linalg.norm(x)
+        # y orthogonal to z_body and x
+        y = np.cross(z_body, x)
+        y /= np.linalg.norm(y)
+        # re-orthogonalize x
+        x = np.cross(y, z_body)
+        # rotation matrix: world → shoulder frame
+        R_shoulder = np.vstack([x, y, z_body]).T
+        return R_shoulder
 
-    T_desire_left = mr.RpToTrans(np.eye(3), p_hand_shoulder_left)
-    T_desire_right = mr.RpToTrans(np.eye(3), p_hand_shoulder_right)
+    # --- Step 2: Right arm ---
+    shoulder_r = shoulder_right
+    wrist_r    = vertices[16]
+    R_shoulder_r = shoulder_frame(shoulder_r, wrist_r)
+    
+    # Hand orientation in world frame
+    z_arm_r = wrist_r - shoulder_r
+    z_arm_r /= np.linalg.norm(z_arm_r)
+    x_temp_r = wrist_r - shoulder_r  # approximate along forearm
+    y_arm_r = np.cross(z_body, x_temp_r)
+    y_arm_r /= np.linalg.norm(y_arm_r)
+    x_arm_r = np.cross(y_arm_r, z_body)
+    R_hand_r = np.vstack([x_arm_r, y_arm_r, z_arm_r]).T
+    
+    # Express in shoulder frame
+    p_right = R_shoulder_r.T @ (wrist_r - shoulder_r)
+    R_right = R_shoulder_r.T @ R_hand_r
+    T_desired_right = mr.RpToTrans(R_right, p_right)
+    
+    # --- Step 3: Left arm ---
+    shoulder_l = shoulder_left
+    wrist_l    = vertices[15]
+    R_shoulder_l = shoulder_frame(shoulder_l, wrist_l)
+    
+    z_arm_l = wrist_l - shoulder_l
+    z_arm_l /= np.linalg.norm(z_arm_l)
+    x_temp_l = wrist_l - shoulder_l
+    y_arm_l = np.cross(z_body, x_temp_l)
+    y_arm_l /= np.linalg.norm(y_arm_l)
+    x_arm_l = np.cross(y_arm_l, z_body)
+    R_hand_l = np.vstack([x_arm_l, y_arm_l, z_arm_l]).T
+    
+    p_left = R_shoulder_l.T @ (wrist_l - shoulder_l)
+    R_left = R_shoulder_l.T @ R_hand_l
+    T_desired_left = mr.RpToTrans(R_left, p_left)
+    
+    return [T_desired_right, T_desired_left]
 
-    return [T_desire_right, T_desire_left]
+def classify_left_or_right(theta_list_right, theta_list_left, T_desired, joint_lengths, threshold):
+    """
+    Classify if the pose corresponds to left turn or right turn based on wrist x-position and shoulder_yaw.
+    
+    Parameters:
+        theta_lists: [shoulder_yaw, shoulder_pitch, elbow, wrist]
+        T_desired: Desired end-effector pose [T_desired_right, T_desired, left]
+        joint_lengths: list/array [L1, L2, L3, L4]
+        threshold: threshold for wrist x-position
+        
+    Returns:
+        pose: 'TURN LEFT' or 'TURN RIGHT' or 'OTHER'
+    """
+    x_threshold_right = (joint_lengths[0] + joint_lengths[1]) * (1 - threshold)
+    x_threshold_left = (joint_lengths[2] + joint_lengths[3]) * (1 - threshold)
+    p_wrist_right = T_desired[0][:3, 3]
+    p_wrist_left = T_desired[1][:3, 3]
 
-# def classify_pose(theta_solution, ideal_pose_dict, threshold=ANGLE_THRESHOLD):
-#     best_match = None
-#     min_error = float("inf")
+    # Only classify RIGHT if right shoulder yaw ~0 AND its wrist x exceeds threshold AND left wrist x is below left threshold
+    if (np.abs(theta_list_right[0]) <= np.deg2rad(0.1) and
+        p_wrist_right[0] >= x_threshold_right and
+        p_wrist_left[0] < x_threshold_left and
+        np.abs(theta_list_right[1]) <= np.abs(theta_list_left[1])):
+        return "TURN RIGHT"
 
-#     for pose_name, ideal_theta in ideal_pose_dict.items():
-#         diff = np.abs(theta_solution - ideal_theta)
-#         error = np.max(diff)   # worst joint
+    # Only classify LEFT if left shoulder yaw ~0 AND its wrist x exceeds threshold AND right wrist x is below right threshold
+    elif (np.abs(theta_list_left[0]) <= np.deg2rad(0.1) and
+          p_wrist_left[0] >= x_threshold_left and
+          p_wrist_right[0] < x_threshold_right and
+          np.abs(theta_list_left[1]) <=  np.abs(theta_list_right[1])):
+        return "TURN LEFT"
 
-#         if error < threshold and error < min_error:
-#             min_error = error
-#             best_match = pose_name
-#             print(min_error)
-#     return best_match if best_match else "UNKNOWN"   
+    else:
+        return "UNKNOWN"
 
 if __name__ == '__main__':
     paths = readImg()
@@ -230,20 +305,19 @@ if __name__ == '__main__':
             world_landmarks_dict = create_world_landmarks_dict(pose_landmarker_result.pose_world_landmarks)
 
             joint_lengths = jointLengths(world_landmarks_dict)
-
+            print("Joint Lengths:", joint_lengths)
+            
             B_list = define_body_frame_screws(joint_lengths)
 
             home_configurations = define_home_configurations(joint_lengths)
 
             T_desired = calculate_T_desired(world_landmarks_dict)
-            print(T_desired)
+            print("T_desired Right", T_desired[0])
+            print("T_desired Left", T_desired[1])
 
-            [theta_solution_right, success_left] = mr.IKinBody(B_list[0], home_configurations[0], T_desired[0], [0,0,0,0], 0.2, 0.2)
-            [theta_solution_left, success_right] = mr.IKinBody(B_list[1], home_configurations[1], T_desired[1], [0,0,0,0], 0.2, 0.2)
+            [theta_solution_right, success_left] = mr.IKinBody(B_list[0], home_configurations[0], T_desired[0], [0,0,0,0], 0.15, 0.15)
+            [theta_solution_left, success_right] = mr.IKinBody(B_list[1], home_configurations[1], T_desired[1], [0,0,0,0], 0.15, 0.15)
             print("Right Hand:", theta_solution_right, success_left)
             print("Left Hand:", theta_solution_left, success_right)
 
-            # left_pose  = classify_pose(theta_solution_left,  IDEAL_POSES)
-            # right_pose = classify_pose(theta_solution_right, IDEAL_POSES)
-            # print("Left arm pose:", left_pose)
-            # print("Right arm pose:", right_pose)
+            print(classify_left_or_right(theta_solution_right, theta_solution_left, T_desired, joint_lengths, 0.3))
