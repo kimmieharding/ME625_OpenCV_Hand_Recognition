@@ -168,96 +168,112 @@ def calculate_T_desired(vertices):
     """
     Define the T_desired transform for the inverseKinematics
     Compute hand position relative to shoulder
+
+            vertices: list/array of body joint positions:
+            11: left shoulder
+            12: right shoulder
+            13: left elbow
+            14: right elbow
+            15: left wrist
+            16: right wrist
+            18: right pinky
+            20: right pointer
+            17: left pinky
+            19: left pointer
+            23: left hip
+            24: right hip
     
     T_desire_left: Transformation matrix of left and in relation to left shoulder
     T_desire_right: Transformation matrix of right and in relation to right shoulder
     """
-    # R_shoulder_right = np.array([
-    #     [-1, 0,  0],
-    #     [ 0, 0,  1],
-    #     [ 0, 1,  0]
-    # ])
 
-    # R_shoulder_left = np.array([
-    #     [ 1, 0,  0],
-    #     [ 0, 0, -1],
-    #     [ 0, -1, 0]
-    # ])
-
-    # v_left_world = vertices[15] - vertices[11]
-    # v_right_world = vertices[16] - vertices[12]
-
-    # p_hand_shoulder_left = R_shoulder_left @ v_left_world
-    # p_hand_shoulder_right = R_shoulder_right @ v_right_world
-
-    # T_desire_left = mr.RpToTrans(np.eye(3), p_hand_shoulder_left)
-    # T_desire_right = mr.RpToTrans(np.eye(3), p_hand_shoulder_right)
-    
-    # --- Step 1: Define body z-axis (torso up) ---
+    # Computer World Frame
     hip_left  = vertices[23]
     hip_right = vertices[24]
     shoulder_left  = vertices[11]
     shoulder_right = vertices[12]
-    
+
     hips_mid      = 0.5 * (hip_left + hip_right)
     shoulders_mid = 0.5 * (shoulder_left + shoulder_right)
-    
-    z_body = shoulders_mid - hips_mid
-    z_body /= np.linalg.norm(z_body)
-    
-    # --- Helper function to build shoulder frame ---
+
+    y_body = shoulders_mid - hips_mid
+    y_body /= np.linalg.norm(y_body)
+
+    # Helper: Build shoulder frame (world → shoulder)
     def shoulder_frame(shoulder, wrist):
-        # x along arm
+        # x-axis along shoulder → wrist
         x = wrist - shoulder
         x /= np.linalg.norm(x)
-        # y orthogonal to z_body and x
-        y = np.cross(z_body, x)
-        y /= np.linalg.norm(y)
-        # re-orthogonalize x
-        x = np.cross(y, z_body)
-        # rotation matrix: world → shoulder frame
-        R_shoulder = np.vstack([x, y, z_body]).T
-        return R_shoulder
 
-    # --- Step 2: Right arm ---
+        # z-axis orthogonal to body-y and x
+        z = np.cross(y_body, x)
+        z /= np.linalg.norm(z)
+
+        # re-orthogonalize x
+        x = np.cross(z, y_body)
+
+        # rotation matrix
+        R = np.vstack([x, y_body, z]).T
+        return R
+
+    # Helper: Build hand frame preserving wrist roll
+    # elbow → wrist defines forearm axis
+    # pinky/pointer midpoint gives hand direction-
+    def hand_frame(elbow, wrist, tip_pinky, tip_pointer):
+        # x-axis (forearm)
+        x_forearm = wrist - elbow
+        x_forearm /= np.linalg.norm(x_forearm)
+
+        # hand direction vector (finger midpoint → wrist)
+        x_hand = 0.5 * (tip_pinky + tip_pointer) - wrist
+        x_hand /= np.linalg.norm(x_hand)
+
+        # z-axis perpendicular to (forearm, hand)
+        z_hand = np.cross(x_forearm, x_hand)
+        z_hand /= np.linalg.norm(z_hand)
+
+        # y-axis completes right-handed frame
+        y_hand = np.cross(z_hand, x_forearm)
+
+        return np.vstack([x_forearm, y_hand, z_hand]).T
+    
+    # Right arm
     shoulder_r = shoulder_right
+    elbow_r    = vertices[14]
     wrist_r    = vertices[16]
+
+    right_pinky   = vertices[18]
+    right_pointer = vertices[20]
+
     R_shoulder_r = shoulder_frame(shoulder_r, wrist_r)
-    
-    # Hand orientation in world frame
-    z_arm_r = wrist_r - shoulder_r
-    z_arm_r /= np.linalg.norm(z_arm_r)
-    x_temp_r = wrist_r - shoulder_r  # approximate along forearm
-    y_arm_r = np.cross(z_body, x_temp_r)
-    y_arm_r /= np.linalg.norm(y_arm_r)
-    x_arm_r = np.cross(y_arm_r, z_body)
-    R_hand_r = np.vstack([x_arm_r, y_arm_r, z_arm_r]).T
-    
-    # Express in shoulder frame
-    p_right = R_shoulder_r.T @ (wrist_r - shoulder_r)
-    R_right = R_shoulder_r.T @ R_hand_r
-    T_desired_right = mr.RpToTrans(R_right, p_right)
-    
-    # --- Step 3: Left arm ---
+    R_hand_r = hand_frame(elbow_r, wrist_r, right_pinky, right_pointer)
+
+    p_r_world = wrist_r - shoulder_r
+    p_r_body  = R_shoulder_r.T @ p_r_world
+    R_r_body  = R_shoulder_r.T @ R_hand_r
+
+    T_desired_right = mr.RpToTrans(R_r_body, p_r_body)
+
+    # Left arm
     shoulder_l = shoulder_left
+    elbow_l    = vertices[13]
     wrist_l    = vertices[15]
+
+    left_pinky   = vertices[17]
+    left_pointer = vertices[19]
+
     R_shoulder_l = shoulder_frame(shoulder_l, wrist_l)
-    
-    z_arm_l = wrist_l - shoulder_l
-    z_arm_l /= np.linalg.norm(z_arm_l)
-    x_temp_l = wrist_l - shoulder_l
-    y_arm_l = np.cross(z_body, x_temp_l)
-    y_arm_l /= np.linalg.norm(y_arm_l)
-    x_arm_l = np.cross(y_arm_l, z_body)
-    R_hand_l = np.vstack([x_arm_l, y_arm_l, z_arm_l]).T
-    
-    p_left = R_shoulder_l.T @ (wrist_l - shoulder_l)
-    R_left = R_shoulder_l.T @ R_hand_l
-    T_desired_left = mr.RpToTrans(R_left, p_left)
-    
+    R_hand_l = hand_frame(elbow_l, wrist_l, left_pinky, left_pointer)
+
+    p_l_world = wrist_l - shoulder_l
+    p_l_body  = R_shoulder_l.T @ p_l_world
+    R_l_body  = R_shoulder_l.T @ R_hand_l
+
+    T_desired_left = mr.RpToTrans(R_l_body, p_l_body)
+
     return [T_desired_right, T_desired_left]
 
-def classify_left_or_right(theta_list_right, theta_list_left, T_desired, joint_lengths, threshold):
+def classify(theta_list_right, theta_list_left, T_desired, joint_lengths, threshold):
     """
     Classify if the pose corresponds to left turn or right turn based on wrist x-position and shoulder_yaw.
     
@@ -276,19 +292,23 @@ def classify_left_or_right(theta_list_right, theta_list_left, T_desired, joint_l
     p_wrist_left = T_desired[1][:3, 3]
 
     # Only classify RIGHT if right shoulder yaw ~0 AND its wrist x exceeds threshold AND left wrist x is below left threshold
-    if (np.abs(theta_list_right[0]) <= np.deg2rad(0.1) and
-        p_wrist_right[0] >= x_threshold_right and
-        p_wrist_left[0] < x_threshold_left and
-        np.abs(theta_list_right[1]) <= np.abs(theta_list_left[1])):
+    if (np.abs(theta_list_right[0]) <= np.deg2rad(10) and
+        p_wrist_right[0] >= x_threshold_right):
         return "TURN RIGHT"
 
     # Only classify LEFT if left shoulder yaw ~0 AND its wrist x exceeds threshold AND right wrist x is below right threshold
-    elif (np.abs(theta_list_left[0]) <= np.deg2rad(0.1) and
-          p_wrist_left[0] >= x_threshold_left and
-          p_wrist_right[0] < x_threshold_right and
-          np.abs(theta_list_left[1]) <=  np.abs(theta_list_right[1])):
+    elif (np.abs(theta_list_left[0]) <= np.deg2rad(10) and
+          p_wrist_left[0] >= x_threshold_left):
         return "TURN LEFT"
+    
+    # Only classify STOP if either wrist roll negative on the arm with greater shoulder_yaw
+    elif (theta_list_right[3] < 0 and abs(theta_list_right[0]) > abs(theta_list_left[0])) or (theta_list_left[3] < 0 and abs(theta_list_left[0]) > abs(theta_list_right[0])):
+        return "STOP"
 
+    # GO if either wrist roll = Positive
+    elif (theta_list_right[3] > 0 and abs(theta_list_right[0]) > abs(theta_list_left[0])) or (theta_list_left[3] > 0 and abs(theta_list_left[0]) > abs(theta_list_right[0])):
+        return "GO"
+    
     else:
         return "UNKNOWN"
 
@@ -315,9 +335,9 @@ if __name__ == '__main__':
             print("T_desired Right", T_desired[0])
             print("T_desired Left", T_desired[1])
 
-            [theta_solution_right, success_left] = mr.IKinBody(B_list[0], home_configurations[0], T_desired[0], [0,0,0,0], 0.15, 0.15)
-            [theta_solution_left, success_right] = mr.IKinBody(B_list[1], home_configurations[1], T_desired[1], [0,0,0,0], 0.15, 0.15)
+            [theta_solution_right, success_left] = mr.IKinBody(B_list[0], home_configurations[0], T_desired[0], [0,0,0,0], 0.2, 0.2)
+            [theta_solution_left, success_right] = mr.IKinBody(B_list[1], home_configurations[1], T_desired[1], [0,0,0,0], 0.2, 0.2)
             print("Right Hand:", theta_solution_right, success_left)
             print("Left Hand:", theta_solution_left, success_right)
 
-            print(classify_left_or_right(theta_solution_right, theta_solution_left, T_desired, joint_lengths, 0.3))
+            print(classify(theta_solution_right, theta_solution_left, T_desired, joint_lengths, 0.3))
