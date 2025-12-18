@@ -75,7 +75,7 @@ def skeletonDetection(img):
 
     return pose_landmarker_result
 
-def create_world_landmarks_dict(pose_world_landmarks):
+def createWLDict(pose_world_landmarks):
     """
     Extract World Landmarks of vertex 11-24 into a Dictonary
     Left arm = 11 13 15 & Left hand = 15 17 19 21
@@ -122,7 +122,25 @@ def jointLengths(vertices):
     #Possible Method to account for variability: Enforce Bilateral Symmetry
     return joint_lengths
 
-def define_body_frame_screws(joint_lengths):
+def defineHomeConfigurations(joint_lengths):
+    """
+    Define the home configuration of the end-effector for the left and right arm
+    
+    home_configurations = [M0EL, M0ER]
+    """
+    R = np.eye(3) #End-effector is in the same orientation as teh rotation matrices
+    
+    pEL = np.array([(joint_lengths[2]+joint_lengths[3]), 0, 0])
+    pER = np.array([(joint_lengths[0]+joint_lengths[1]), 0, 0])
+
+    M0EL = mr.RpToTrans(R, pEL)
+    M0ER = mr.RpToTrans(R, pER)
+
+    home_configurations = [M0ER, M0EL]
+
+    return home_configurations
+
+def defineBodyFrameScrews(joint_lengths):
     #Variables for all the joint lengths
     L1 = joint_lengths[0]
     L2 = joint_lengths[1]
@@ -146,25 +164,7 @@ def define_body_frame_screws(joint_lengths):
 
     return B_list
 
-def define_home_configurations(joint_lengths):
-    """
-    Define the home configuration of the end-effector for the left and right arm
-    
-    home_configurations = [M0EL, M0ER]
-    """
-    R = np.eye(3) #End-effector is in the same orientation as teh rotation matrices
-    
-    pEL = np.array([(joint_lengths[2]+joint_lengths[3]), 0, 0])
-    pER = np.array([(joint_lengths[0]+joint_lengths[1]), 0, 0])
-
-    M0EL = mr.RpToTrans(R, pEL)
-    M0ER = mr.RpToTrans(R, pER)
-
-    home_configurations = [M0ER, M0EL]
-
-    return home_configurations
-
-def calculate_T_desired(vertices):
+def calculateTDesired(vertices):
     """
     Define the T_desired transform for the inverseKinematics
     Compute hand position relative to shoulder
@@ -291,15 +291,15 @@ def classify(theta_list_right, theta_list_left, T_desired, joint_lengths, thresh
     p_wrist_right = T_desired[0][:3, 3]
     p_wrist_left = T_desired[1][:3, 3]
 
-    # Only classify RIGHT if right shoulder yaw ~0 AND its wrist x exceeds threshold AND left wrist x is below left threshold
+    # Only classify LEFT if right shoulder yaw ~0 AND its wrist x exceeds threshold AND left wrist x is below left threshold
     if (np.abs(theta_list_right[0]) <= np.deg2rad(10) and
         p_wrist_right[0] >= x_threshold_right):
-        return "TURN RIGHT"
+        return "TURN LEFT"
 
-    # Only classify LEFT if left shoulder yaw ~0 AND its wrist x exceeds threshold AND right wrist x is below right threshold
+    # Only classify RIGHT if left shoulder yaw ~0 AND its wrist x exceeds threshold AND right wrist x is below right threshold
     elif (np.abs(theta_list_left[0]) <= np.deg2rad(10) and
           p_wrist_left[0] >= x_threshold_left):
-        return "TURN LEFT"
+        return "TURN RIGHT"
     
     # Only classify STOP if either wrist roll negative on the arm with greater shoulder_yaw
     elif (theta_list_right[3] < 0 and abs(theta_list_right[0]) > abs(theta_list_left[0])) or (theta_list_left[3] < 0 and abs(theta_list_left[0]) > abs(theta_list_right[0])):
@@ -322,21 +322,22 @@ if __name__ == '__main__':
         if detected:
             pose_landmarker_result = skeletonDetection(img)
 
-            world_landmarks_dict = create_world_landmarks_dict(pose_landmarker_result.pose_world_landmarks)
+            world_landmarks_dict = createWLDict(pose_landmarker_result.pose_world_landmarks)
 
             joint_lengths = jointLengths(world_landmarks_dict)
             print("Joint Lengths:", joint_lengths)
             
-            B_list = define_body_frame_screws(joint_lengths)
+            B_list = defineBodyFrameScrews(joint_lengths)
 
-            home_configurations = define_home_configurations(joint_lengths)
+            home_configurations = defineHomeConfigurations(joint_lengths)
 
-            T_desired = calculate_T_desired(world_landmarks_dict)
+            T_desired = calculateTDesired(world_landmarks_dict)
             print("T_desired Right", T_desired[0])
             print("T_desired Left", T_desired[1])
 
             [theta_solution_right, success_left] = mr.IKinBody(B_list[0], home_configurations[0], T_desired[0], [0,0,0,0], 0.2, 0.2)
             [theta_solution_left, success_right] = mr.IKinBody(B_list[1], home_configurations[1], T_desired[1], [0,0,0,0], 0.2, 0.2)
+
             print("Right Hand:", theta_solution_right, success_left)
             print("Left Hand:", theta_solution_left, success_right)
 
